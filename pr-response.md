@@ -24,11 +24,11 @@
 **How I verified:** Ran `pytest tests/test_watchlist.py -v`. The new test passed (`1 passed`), confirming that `add_to_watchlist()` rejects an unknown film before attempting to create a `WatchlistEntry`.
 
 ## Comment 4 — Default visibility
-**My position:** I support keeping `public=True` as the default, provided that visibility is communicated clearly and users have an easy way to make watchlist entries private. This should be an intentional product default, not merely an inherited model value.
+<!-- **My position:** I support keeping `public=True` as the default, provided that visibility is communicated clearly and users have an easy way to make watchlist entries private. This should be an intentional product default, not merely an inherited model value.
 
 **Reasoning:** I am optimizing for users who treat CineLog as a social discovery tool: they save films they want to watch, share those interests, and help other users discover films through visible watchlists. Defaulting entries to public makes that behavior immediate and avoids requiring an extra visibility decision every time a film is added. It also ensures that the sharing value of the feature works for users who accept the product's social model but would not actively configure each entry.
 
-**Tradeoff acknowledged:** A `public=False` default would better protect users who consider their viewing interests personal and would reduce the risk of accidental disclosure. That is a meaningful privacy advantage, and a public default creates a responsibility to make visibility obvious and private controls accessible. I am choosing public-by-default here because I prioritize low-friction sharing and discovery for this feature, but if CineLog cannot clearly communicate the default or offer a straightforward opt-out, private-by-default would be the safer choice.
+**Tradeoff acknowledged:** A `public=False` default would better protect users who consider their viewing interests personal and would reduce the risk of accidental disclosure. That is a meaningful privacy advantage, and a public default creates a responsibility to make visibility obvious and private controls accessible. I am choosing public-by-default here because I prioritize low-friction sharing and discovery for this feature, but if CineLog cannot clearly communicate the default or offer a straightforward opt-out, private-by-default would be the safer choice. -->
 
 ## Comment 5 — Sort order
 **My position:** I agree that the default should be date added, newest first. I changed `get_watchlist()` to order by `WatchlistEntry.date_added.desc()` instead of `Film.title.asc()`.
