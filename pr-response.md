@@ -19,9 +19,9 @@
 **How I verified:** Added a film to a user's watchlist, attempted to add the same film for the same user again, and confirmed that `AlreadyInWatchlistError` was raised and only one matching `WatchlistEntry` remained in the database. I also ran the full test suite to check for regressions.
 
 ## Comment 3 — Missing test
-**What I did:** Created `tests/test_watchlist.py` and added `test_add_to_watchlist_nonexistent_film_raises`. The test uses the same isolated in-memory database and user fixture pattern as `tests/test_collection.py`, calls `add_to_watchlist()` with the nonexistent integer film ID `999999`, and asserts that the service raises `FilmNotFoundError` rather than allowing a database integrity error.
+**What I did:** Created `tests/test_watchlist.py` and added `test_add_to_watchlist_nonexistent_film_raises`. The test uses the same isolated in-memory database and user fixture pattern as `tests/test_collection.py`, calls `add_to_watchlist()` with the nonexistent UUID `00000000-0000-0000-0000-000000000000`, and asserts that the service raises `FilmNotFoundError` rather than allowing a database integrity error.
 
-**How I verified:** Ran `pytest tests/test_watchlist.py -v`. The new test passed (`1 passed`), confirming that `add_to_watchlist()` rejects an unknown film before attempting to create a `WatchlistEntry`.
+**How I verified:** Ran `pytest tests/test_watchlist.py -v`; all three watchlist tests passed. This confirmed that UUID-backed entries can be created, an unknown UUID is rejected before insertion, and retrieved watchlists are ordered newest first.
 
 ## Comment 4 — Default visibility
 **My position:** I support keeping `public=True` as the default, provided that visibility is communicated clearly and users have an easy way to make watchlist entries private. This should be an intentional product default, not merely an inherited model value.
@@ -38,15 +38,21 @@
 **Engagement with reviewer's point:** The reviewer's observation that users generally want to see what they added recently matches the primary behavior I want to optimize for: resuming the intent that brought a user back to their watchlist. I therefore adopted the suggested ordering rather than retaining alphabetical order. This also aligns watchlist behavior with the collection service's existing newest-first convention, making ordering more predictable across CineLog.
 
 ## Comment 6 — Rebase
-**What conflicted:**
-**How I resolved it:**
-**How I verified no conflict remains:**
+**What conflicted:** Git reported an add/add conflict in `.gitignore` because both branches introduced the file, with `main` also ignoring `.pytest_cache/`. The UUID migration created a separate semantic conflict that Git did not flag: `main` removed the integer-based `WatchlistEntry`, while the replayed feature commits still imported it and documented integer film IDs.
+
+**How I resolved it:** Removed the committed conflict markers from `.gitignore` and retained the complete set of Python, database, test-cache, and virtual-environment exclusions. Restored `WatchlistEntry` with a UUID `film_id`, added the user and film relationships required by the service, changed the service and route documentation to UUIDs, and updated the missing-film test to use a nonexistent UUID.
+
+**How I verified no conflict remains:** Searched the project for Git conflict markers and remaining watchlist integer-ID references; no unresolved markers or active integer assumptions remain. `pytest tests/test_watchlist.py -v` passed all three focused tests, and the complete suite passed all seven tests. The focused tests exercise UUID persistence, nonexistent UUID handling, the `entry.film` relationship, and newest-first ordering.
 
 ## PR Description
-### Rebase process
+### Rebase and conflict resolution
 
-I fetched `origin` and rebased `feature/watchlist` onto `origin/main` so the branch would include the film ID migration from integers to UUIDs. Git reported one textual conflict in `.gitignore`: both branches had added the file, while the version on `main` also ignored `.pytest_cache/`. I resolved the add/add conflict by removing the conflict markers, retaining the shared Python, database, and virtual-environment exclusions, and keeping `.pytest_cache/`. I then staged `.gitignore` and continued the rebase until Git returned to `feature/watchlist` with no unmerged paths or active rebase.
+I fetched `origin` and rebased `feature/watchlist` onto `origin/main` to incorporate the refactor that migrated film IDs from integers to UUIDs. The rebase exposed both a textual conflict and a semantic integration conflict.
 
-The absence of a UUID-related merge conflict did not mean the feature was compatible with the refactor. `WatchlistEntry` existed in the common ancestor, but `main` deleted it during the UUID migration, and none of the watchlist commits replayed by the rebase modified `models.py`. Git therefore applied those commits cleanly while leaving `services/watchlist_service.py` importing a model that no longer existed. A project-wide search also found remaining integer assumptions in the service docstring, route documentation, and nonexistent-film test.
+**Textual conflict:** Git reported an add/add conflict in `.gitignore` because both branches introduced that file. The version from `main` also included `.pytest_cache/`. Conflict markers were accidentally staged during the rebase, so I removed them and retained the complete combined ignore list for environment files, databases, Python caches, pytest caches, and virtual environments.
 
-I confirmed the `.gitignore` conflict itself was resolved by checking that `git status` showed no rebase in progress and no unmerged files, and by inspecting the history to verify that the rewritten watchlist commits now follow `origin/main`. However, the post-rebase test run failed during collection with `ImportError: cannot import name 'WatchlistEntry' from 'models'`. Therefore, the textual conflict is fully resolved, but the UUID integration is not yet complete. Before this rebase can be considered fully addressed, `WatchlistEntry` must be restored with a UUID `film_id`, its film relationship must support `entry.film`, the remaining integer references must be updated, and the full test suite must pass.
+**Semantic conflict:** Git did not report a conflict for the UUID migration because none of the replayed watchlist commits modified `models.py`. As a result, Git kept `main`'s removal of the old integer-based `WatchlistEntry`, even though the watchlist service still imported that model and expected it to exist. The service docstring, route request example, and missing-film test also continued to describe or use integer IDs.
+
+**Resolution:** I restored `WatchlistEntry` with a UUID `film_id` foreign key and added the relationships needed for `entry.film` and `entry.user`. I updated the service and route documentation to use UUIDs, changed the nonexistent-film test to use a nonexistent UUID, and added focused coverage for successful UUID persistence and newest-first watchlist retrieval.
+
+**Verification:** I searched the repository for unresolved Git markers and remaining active watchlist integer-ID assumptions; none remain. `pytest tests/test_watchlist.py -v` passed all three focused tests, the complete test suite passed all seven tests, Python compilation succeeded, and `git diff --check` reported no whitespace errors.
