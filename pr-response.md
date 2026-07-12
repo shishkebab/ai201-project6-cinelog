@@ -43,4 +43,10 @@
 **How I verified no conflict remains:**
 
 ## PR Description
-<!-- Written at the end — feature overview, design decisions, manual testing steps -->
+### Rebase process
+
+I fetched `origin` and rebased `feature/watchlist` onto `origin/main` so the branch would include the film ID migration from integers to UUIDs. Git reported one textual conflict in `.gitignore`: both branches had added the file, while the version on `main` also ignored `.pytest_cache/`. I resolved the add/add conflict by removing the conflict markers, retaining the shared Python, database, and virtual-environment exclusions, and keeping `.pytest_cache/`. I then staged `.gitignore` and continued the rebase until Git returned to `feature/watchlist` with no unmerged paths or active rebase.
+
+The absence of a UUID-related merge conflict did not mean the feature was compatible with the refactor. `WatchlistEntry` existed in the common ancestor, but `main` deleted it during the UUID migration, and none of the watchlist commits replayed by the rebase modified `models.py`. Git therefore applied those commits cleanly while leaving `services/watchlist_service.py` importing a model that no longer existed. A project-wide search also found remaining integer assumptions in the service docstring, route documentation, and nonexistent-film test.
+
+I confirmed the `.gitignore` conflict itself was resolved by checking that `git status` showed no rebase in progress and no unmerged files, and by inspecting the history to verify that the rewritten watchlist commits now follow `origin/main`. However, the post-rebase test run failed during collection with `ImportError: cannot import name 'WatchlistEntry' from 'models'`. Therefore, the textual conflict is fully resolved, but the UUID integration is not yet complete. Before this rebase can be considered fully addressed, `WatchlistEntry` must be restored with a UUID `film_id`, its film relationship must support `entry.film`, the remaining integer references must be updated, and the full test suite must pass.
