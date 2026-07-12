@@ -1,7 +1,9 @@
 # PR Response Doc — CineLog Watchlist Feature
 
 ## AI Usage
-<!-- Fill in at the end — how you used AI tools during this project -->
+I used Codex and Claude to orient myself in the codebase and compare the watchlist implementation with established project patterns. In particular, I asked it to locate every reference to `save_to_watchlist()`, examine how `add_to_collection()` handles duplicate entries, and compare the missing-film test with the equivalent collection test. I reviewed the proposed changes and verified them independently with project-wide searches, focused pytest runs, the complete test suite, and `git diff --check`. I also used AI to inspect the rebase history and reflog, diagnose the UUID integration issue that Git did not report as a textual conflict, and audit the commit subjects against Conventional Commits.
+
+For Comments 4 and 5, I asked Claude to stress-test both sides of the design choices rather than simply defend the existing implementation. For visibility, the AI identified the tension between social discovery and privacy; my final position keeps `public=True` only with the additional requirement that the default be clearly disclosed and that users have an accessible private option. For ordering, the AI compared alphabetical scanning with recent-intent behavior; my final argument adopts newest-first because a watchlist functions primarily as a personal queue, while reserving alphabetical order for a future explicit sort or search option. The final positions and tradeoffs are my decisions, refined using that analysis.
 
 ## Comment 1 — Rename
 **What I changed:** Renamed `save_to_watchlist()` to `add_to_watchlist()` in `services/watchlist_service.py`. I also updated the corresponding import and invocation in `routes/watchlist/watchlist.py` so the route uses the new service API consistently.
@@ -44,15 +46,115 @@
 
 **How I verified no conflict remains:** Searched the project for Git conflict markers and remaining watchlist integer-ID references; no unresolved markers or active integer assumptions remain. `pytest tests/test_watchlist.py -v` passed all three focused tests, and the complete suite passed all seven tests. The focused tests exercise UUID persistence, nonexistent UUID handling, the `entry.film` relationship, and newest-first ordering.
 
+**Git log image:** [Git log image](./git_log.png)
+
 ## PR Description
+### Summary
+
+This PR adds a watchlist for films a user wants to watch later. A client can add a film by UUID with `POST /watchlist/<user_id>/add` and retrieve the user's watchlist with `GET /watchlist/<user_id>`. Each returned film includes its watchlist `date_added` and `public` metadata. The service rejects unknown film UUIDs and prevents the same user from adding the same film more than once.
+
+The implementation is compatible with `main`'s UUID-based film model and includes focused service tests for successful UUID persistence, missing films, model relationships, and result ordering.
+
+### Design decisions
+
+1. **Visibility defaults to public.** New `WatchlistEntry` records use `public=True`. I chose this default to optimize for CineLog's social discovery use case: users can share what they plan to watch without configuring every entry individually. The tradeoff is that private-by-default would offer stronger protection for users who consider viewing interests personal, so visibility must be communicated clearly and an accessible private option should be added as the product evolves.
+2. **Watchlists default to newest-first order.** `get_watchlist()` sorts by `date_added` descending. This treats the watchlist as a personal queue and puts the user's most recent interests at the top, while also making a newly added film immediately visible. Alphabetical ordering can still be offered later as an explicit sort option or through search.
+
+### Manual testing
+
+1. Install the dependencies:
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+2. Seed one user and two films from the Flask shell:
+
+   ```bash
+   flask --app app shell
+   ```
+
+   Then run:
+
+   ```python
+   from app import db
+   from models import Film, User
+
+   user = User(username="watchlist-manual", email="watchlist-manual@example.com")
+   older_film = Film(title="Manual Older Film", year=2024)
+   newer_film = Film(title="Manual Newer Film", year=2025)
+   db.session.add_all([user, older_film, newer_film])
+   db.session.commit()
+
+   print("USER_ID=", user.id)
+   print("OLDER_FILM_ID=", older_film.id)
+   print("NEWER_FILM_ID=", newer_film.id)
+   exit()
+   ```
+
+3. Start the API in one terminal:
+
+   ```bash
+   source .venv/bin/activate
+   python app.py
+   ```
+
+4. In another terminal, replace the placeholders with the UUIDs printed during seeding:
+
+   ```bash
+   USER_ID="<user-uuid>"
+   OLDER_FILM_ID="<older-film-uuid>"
+   NEWER_FILM_ID="<newer-film-uuid>"
+   ```
+
+5. Add the first film and confirm the response is `201 Created` with `"public": true`:
+
+   ```bash
+   curl -i -X POST "http://localhost:5000/watchlist/$USER_ID/add" \
+     -H "Content-Type: application/json" \
+     -d "{\"film_id\": \"$OLDER_FILM_ID\"}"
+   ```
+
+6. Wait one second, then add the second film:
+
+   ```bash
+   sleep 1
+   curl -i -X POST "http://localhost:5000/watchlist/$USER_ID/add" \
+     -H "Content-Type: application/json" \
+     -d "{\"film_id\": \"$NEWER_FILM_ID\"}"
+   ```
+
+7. Retrieve the watchlist:
+
+   ```bash
+   curl -s "http://localhost:5000/watchlist/$USER_ID" | python -m json.tool
+   ```
+
+   Confirm that both entries include `date_added` and `public`, that `public` is `true`, and that **Manual Newer Film** appears before **Manual Older Film**.
+
+8. Confirm request validation by omitting `film_id`:
+
+   ```bash
+   curl -i -X POST "http://localhost:5000/watchlist/$USER_ID/add" \
+     -H "Content-Type: application/json" \
+     -d '{}'
+   ```
+
+   Confirm the API returns `400 Bad Request` with `{"error":"film_id is required"}`.
+
+9. Run the automated checks:
+
+   ```bash
+   pytest tests/test_watchlist.py -v
+   pytest -q
+   ```
+
+   The focused watchlist suite should report three passing tests, and the complete suite should report seven passing tests.
+
 ### Rebase and conflict resolution
 
-I fetched `origin` and rebased `feature/watchlist` onto `origin/main` to incorporate the refactor that migrated film IDs from integers to UUIDs. The rebase exposed both a textual conflict and a semantic integration conflict.
+I rebased `feature/watchlist` onto `origin/main` to incorporate the UUID migration. I removed accidentally committed `.gitignore` conflict markers and retained the combined ignore rules. Git did not flag the semantic conflict caused by `main` removing the old integer-based `WatchlistEntry`, so I restored that model with a UUID `film_id`, added the `entry.film` and `entry.user` relationships, and updated the remaining integer references in the service, route documentation, and tests.
 
-**Textual conflict:** Git reported an add/add conflict in `.gitignore` because both branches introduced that file. The version from `main` also included `.pytest_cache/`. Conflict markers were accidentally staged during the rebase, so I removed them and retained the complete combined ignore list for environment files, databases, Python caches, pytest caches, and virtual environments.
-
-**Semantic conflict:** Git did not report a conflict for the UUID migration because none of the replayed watchlist commits modified `models.py`. As a result, Git kept `main`'s removal of the old integer-based `WatchlistEntry`, even though the watchlist service still imported that model and expected it to exist. The service docstring, route request example, and missing-film test also continued to describe or use integer IDs.
-
-**Resolution:** I restored `WatchlistEntry` with a UUID `film_id` foreign key and added the relationships needed for `entry.film` and `entry.user`. I updated the service and route documentation to use UUIDs, changed the nonexistent-film test to use a nonexistent UUID, and added focused coverage for successful UUID persistence and newest-first watchlist retrieval.
-
-**Verification:** I searched the repository for unresolved Git markers and remaining active watchlist integer-ID assumptions; none remain. `pytest tests/test_watchlist.py -v` passed all three focused tests, the complete test suite passed all seven tests, Python compilation succeeded, and `git diff --check` reported no whitespace errors.
+I verified the resolution with a repository-wide conflict-marker and integer-reference search, three passing focused watchlist tests, seven passing tests in the complete suite, successful Python compilation, and `git diff --check`.
