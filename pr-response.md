@@ -6,8 +6,6 @@
 ## Comment 1 — Rename
 **What I changed:** Renamed `save_to_watchlist()` to `add_to_watchlist()` in `services/watchlist_service.py`. I also updated the corresponding import and invocation in `routes/watchlist/watchlist.py` so the route uses the new service API consistently.
 
-**Why:** `add_to_watchlist()` describes the domain action more precisely. The function creates a new relationship between a user and a film; `save` is broader and could imply either persistence or an update to an existing entry.
-
 **Design decisions:**
 
 1. I chose `add_to_watchlist()` to match the existing `add_film` route handler and `/add` endpoint. Using the same verb across the route and service layers makes the request flow easier to follow and communicates that this is a create operation.
@@ -16,8 +14,9 @@
 **How I verified:** I used a project-wide search to confirm there are no remaining references to `save_to_watchlist()` and that the definition, import, and call all use `add_to_watchlist()`. I also ran the test suite; all four tests passed.
 
 ## Comment 2 — Deduplication
-**What I did:**
-**How I verified:**
+**What I did:** Added an `AlreadyInWatchlistError` and updated `add_to_watchlist()` to query for an existing entry with the same `user_id` and `film_id` before creating one. If a match exists, the function raises the new error instead of inserting a duplicate. This follows the same validation pattern used by `add_to_collection()`.
+
+**How I verified:** Added a film to a user's watchlist, attempted to add the same film for the same user again, and confirmed that `AlreadyInWatchlistError` was raised and only one matching `WatchlistEntry` remained in the database. I also ran the full test suite to check for regressions.
 
 ## Comment 3 — Missing test
 **What I did:**
