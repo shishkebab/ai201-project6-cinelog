@@ -4,6 +4,11 @@
 instance/
 __pycache__/
 *.pyc
+<<<<<<< HEAD
 .pytest_cache/
 .venv/
 venv/
+=======
+.venv/
+venv/
+>>>>>>> eba37d0 (fix: renamed save_to_watchlist() to add_to_watchlist())
